@@ -27,41 +27,36 @@ def add_txt_to_excel(excel_file):
     else:
         wb = openpyxl.Workbook()
 
-    # Check if the second sheet exists, if not, create it
-    second_sheet_title = extract_sheet_name(txt_files[0])
-    if second_sheet_title:
-        if second_sheet_title not in wb.sheetnames:
-            wb.create_sheet(title=second_sheet_title)
+    # Get the correct sheet or create it if not exists
+    first_sheet_name = extract_sheet_name(txt_files[0])
+    if first_sheet_name not in wb.sheetnames:
+        sheet = wb.create_sheet(title=first_sheet_name)
+    else:
+        sheet = wb[first_sheet_name]
 
-    # Get the correct sheet
-    sheet = wb[second_sheet_title]
-
-    # Process each .txt file and write its contents to the second sheet in the Excel file
+    # Process each .txt file and write its contents to the sheet in the Excel file
     for txt_file in txt_files:
         txt_path = os.path.join(script_folder, txt_file)
         if txt_file.endswith('.xls'):
             xls_data = xlrd.open_workbook(txt_path)
-            sheet = xls_data.sheet_by_index(0)
-            headers = sheet.row_values(0)
-            data = [sheet.row_values(i) for i in range(1, sheet.nrows)]
+            sheet_data = xls_data.sheet_by_index(0)
+            headers = sheet_data.row_values(0)
+            data = [sheet_data.row_values(i) for i in range(1, sheet_data.nrows)]
             df = pd.DataFrame(data, columns=headers)
         else:  # Assuming it's a .txt file with tab-delimited data
             # Specify data types and set low_memory=False to prevent DtypeWarning
             df = pd.read_csv(txt_path, delimiter='\t', dtype=str, low_memory=False)
 
-        # Calculate the starting row and column based on existing data on the second sheet
-        start_row = sheet.max_row + 1 if sheet.max_row > 0 else 1
-        start_column = sheet.max_column + 1 if sheet.max_column > 0 else 1
+        # Calculate the starting column based on existing data on the sheet
+        start_column = sheet.max_column + 1 if sheet.max_column is not None else 1
 
-        # Append the contents to the second sheet
-        if txt_file == txt_files[0]:  # For the first file, include the first column
-            for index, row in df.iterrows():
-                for col_index, value in enumerate(row):
-                    sheet.cell(row=start_row + index, column=start_column + col_index, value=value)
-        else:  # For subsequent files, exclude the first column and append to the right
-            for index, row in df.iloc[:, 1:].iterrows():
-                for col_index, value in enumerate(row):
-                    sheet.cell(row=start_row + index, column=start_column + col_index, value=value)
+        # Set the starting row to 1 for each .txt file
+        start_row = 1
+
+        # Append the contents to the sheet, excluding the first column for subsequent files
+        for index, row in df.iterrows():
+            for col_index, value in enumerate(row):
+                sheet.cell(row=start_row + index, column=start_column + col_index, value=value)
 
     # Save the changes to master.xlsx
     wb.save(excel_file)
