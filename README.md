@@ -5,7 +5,8 @@ To use this script, you must have python installed on your system.
 
 Place the python script into an unzipped folder of single period bulk call report data downloaded from https://cdr.ffiec.gov/public/PWS/DownloadBulkData.aspx
 
-Run script
+Run script (can take as long as a minute to process)
 
-Open master.xls.
+Open master.xls
 
+You can create charts and pivot tables in anticpation of the data that will be put into subsequent sheets on sheet 1.  Sheet 1 remains untouched.
