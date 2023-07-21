@@ -9,4 +9,4 @@ Run script (can take as long as several minutes to process)
 
 Open master.xls
 
-You can create charts and pivot tables in anticpation of the data that will be put into subsequent sheets on sheet 1.  Sheet 1 remains untouched.
+You can create charts and pivot tables in anticipation of the data that will be put into subsequent sheets on sheet 1.  Sheet 1 remains untouched.
