@@ -8,8 +8,8 @@ def clean_sheet_name(sheet_name):
     return "".join(c for c in sheet_name if c.isalnum() or c in [' ', '_', '-'])
 
 def delete_empty_columns(sheet):
-    # Find the columns that are empty (all cells in the column are None or empty strings)
-    empty_columns = set(col_idx for col_idx in range(1, sheet.max_column + 1) if all(not sheet[get_column_letter(col_idx) + str(row)].value for row in range(1, sheet.max_row + 1)))
+    # Find the columns that have an empty value in the first row
+    empty_columns = set(col_idx for col_idx in range(1, sheet.max_column + 1) if not sheet[get_column_letter(col_idx) + '1'].value)
 
     # Delete the empty columns in reverse order to avoid index issues
     for col_idx in sorted(empty_columns, reverse=True):
@@ -19,7 +19,7 @@ def find_empty_column(sheet):
     # Find the first empty column in the sheet
     for col in range(1, sheet.max_column + 2):
         col_letter = get_column_letter(col)
-        if all(not sheet[col_letter + str(row)].value for row in range(1, sheet.max_row + 1)):
+        if not sheet[col_letter + '1'].value:
             return col
     return sheet.max_column + 2
 
