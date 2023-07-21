@@ -7,15 +7,6 @@ def clean_sheet_name(sheet_name):
     # Remove characters that cannot be used in a worksheet name
     return "".join(c for c in sheet_name if c.isalnum() or c in [' ', '_', '-'])
 
-def convert_value(value):
-    # Convert the value to a string, handling special cases if needed
-    if isinstance(value, str):
-        return value
-    elif value is None:
-        return ""
-    else:
-        return str(value)
-
 def main():
     # Get all filenames that end with ".txt"
     filenames = [f for f in os.listdir('.') if f.endswith('.txt')]
@@ -51,11 +42,13 @@ def main():
     for row, line in enumerate(data):
         for col, cell in enumerate(line):
             col_letter = get_column_letter(col + 1)  # Convert the column index to letter
-            sheet[col_letter + str(row + 1)] = convert_value(cell)
-    
-    # Insert a blank row after the headers
-    sheet.insert_rows(2)
-    
+            
+            # Check if the cell value is a number and set the data type accordingly
+            if cell.isnumeric():
+                sheet[col_letter + str(row + 1)] = int(cell)
+            else:
+                sheet[col_letter + str(row + 1)] = cell
+
     # Get the starting column based on existing data on the sheet
     start_column = sheet.max_column + 1 if sheet.max_column is not None else 1
 
@@ -69,10 +62,21 @@ def main():
         for row, line in enumerate(data):
             for col, cell in enumerate(line[1:]):  # Skip the first column
                 col_letter = get_column_letter(start_column + col)  # Convert the column index to letter
-                sheet[col_letter + str(row + 1)] = convert_value(cell)
+
+                # Check if the cell value is a number and set the data type accordingly
+                if cell.isnumeric():
+                    sheet[col_letter + str(row + 2)].data_type = 'n'
+                    sheet[col_letter + str(row + 2)].value = int(cell)
+                else:
+                    sheet[col_letter + str(row + 2)] = cell
 
         # Increment the starting column for the next file
         start_column += len(data[0]) - 1
+
+    # Delete empty columns
+    columns_to_delete = [col for col in range(1, sheet.max_column + 1) if not any(sheet.cell(row=row, column=col).value for row in range(1, sheet.max_row + 1))]
+    for col in reversed(columns_to_delete):
+        sheet.delete_cols(col)
 
     # Save the changes to master.xlsx
     wb.save('master.xlsx')
