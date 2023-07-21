@@ -1,101 +1,81 @@
-import os
+import csv
 import openpyxl
-import pandas as pd
-import re
-import xlrd
+import os
+from openpyxl.utils import get_column_letter
 
-def extract_sheet_name(filename):
-    # Use regular expressions to extract the last 8 characters before .txt in the first file
-    pattern = r"(.{8})\.txt$"
-    match = re.search(pattern, filename)
-    if match:
-        return match.group(1)
+def clean_sheet_name(sheet_name):
+    # Remove characters that cannot be used in a worksheet name
+    return "".join(c for c in sheet_name if c.isalnum() or c in [' ', '_', '-'])
+
+def convert_value(value):
+    # Convert the value to a string, handling special cases if needed
+    if isinstance(value, str):
+        return value
+    elif value is None:
+        return ""
     else:
-        return None
+        return str(value)
 
-def add_txt_to_excel(excel_file):
-    script_folder = os.path.dirname(os.path.abspath(__file__))
-    txt_files = [f for f in os.listdir(script_folder) if f.endswith('.txt')]
+def main():
+    # Get all filenames that end with ".txt"
+    filenames = [f for f in os.listdir('.') if f.endswith('.txt')]
 
-    if not txt_files:
-        print("No txt files found in the folder.")
-        return
-
-    # Create or load the master.xlsx file
-    if os.path.exists(excel_file):
-        wb = openpyxl.load_workbook(excel_file)
+    # Find the filename that contains the word "BULK" and remove it from the list
+    bulk_filename = next((f for f in filenames if 'Bulk' in f), None)
+    if bulk_filename:
+        filenames.remove(bulk_filename)
     else:
-        wb = openpyxl.Workbook()
-
-    # Get the correct sheet or create it if not exists
-    first_txt_file = None
-    for txt_file in txt_files:
-        if "BULK" in txt_file.upper():
-            first_txt_file = txt_file
-            break
-
-    if not first_txt_file:
         print("No file with 'BULK' in its filename found.")
         return
 
-    first_sheet_name = extract_sheet_name(first_txt_file)
-    if first_sheet_name not in wb.sheetnames:
-        sheet = wb.create_sheet(title=first_sheet_name)
+    # Create or load the master.xlsx file
+    if os.path.exists('master.xlsx'):
+        wb = openpyxl.load_workbook('master.xlsx')
     else:
-        sheet = wb[first_sheet_name]
+        wb = openpyxl.Workbook()
 
-    # Process the first .txt file and write its contents to the sheet in the Excel file
-    first_txt_path = os.path.join(script_folder, first_txt_file)
-    if first_txt_file.endswith('.xls'):
-        xls_data = xlrd.open_workbook(first_txt_path)
-        sheet_data = xls_data.sheet_by_index(0)
-        headers = sheet_data.row_values(0)
-        data = [sheet_data.row_values(i) for i in range(sheet_data.nrows)]
+    # Create a worksheet with the name of the last 8 characters before the .txt for the BULK file
+    sheet_name = bulk_filename[-12:-4]
+    sheet_name = clean_sheet_name(sheet_name)  # Clean the sheet name
+    if sheet_name not in wb.sheetnames:
+        sheet = wb.create_sheet(title=sheet_name)
     else:
-        df = pd.read_csv(first_txt_path, delimiter='\t', dtype=str, low_memory=False)
-        data = df.values.tolist()
-        headers = df.columns.tolist()
+        sheet = wb[sheet_name]
 
-    # Calculate the starting column based on existing data on the sheet
+    # Read the data from the BULK file
+    with open(bulk_filename, 'r', encoding='latin-1') as f:
+        reader = csv.reader(f, delimiter='\t')
+        data = list(reader)
+
+    # Write the data to the worksheet
+    for row, line in enumerate(data):
+        for col, cell in enumerate(line):
+            col_letter = get_column_letter(col + 1)  # Convert the column index to letter
+            sheet[col_letter + str(row + 1)] = convert_value(cell)
+    
+    # Insert a blank row after the headers
+    sheet.insert_rows(2)
+    
+    # Get the starting column based on existing data on the sheet
     start_column = sheet.max_column + 1 if sheet.max_column is not None else 1
 
-    # Set the starting row to 1 for the first .txt file
-    start_row = 1
+    # Iterate through the rest of the TXT files and add the data to the right
+    for filename in filenames:
+        with open(filename, 'r', encoding='latin-1') as f:
+            reader = csv.reader(f, delimiter='\t')
+            data = list(reader)
 
-    # Append the contents to the sheet for the first file (include the first column)
-    for index, row in enumerate(data):
-        for col_index, value in enumerate(row):
-            sheet.cell(row=start_row + index, column=start_column + col_index, value=value)
+        # Write the data to the existing sheet
+        for row, line in enumerate(data):
+            for col, cell in enumerate(line[1:]):  # Skip the first column
+                col_letter = get_column_letter(start_column + col)  # Convert the column index to letter
+                sheet[col_letter + str(row + 1)] = convert_value(cell)
 
-    # Process subsequent .txt files and append their contents to the right of the first file
-    for txt_file in txt_files:
-        if txt_file != first_txt_file:
-            txt_path = os.path.join(script_folder, txt_file)
-            if txt_file.endswith('.xls'):
-                xls_data = xlrd.open_workbook(txt_path)
-                sheet_data = xls_data.sheet_by_index(0)
-                data = [sheet_data.row_values(i) for i in range(sheet_data.nrows)]
-            else:
-                df = pd.read_csv(txt_path, delimiter='\t', dtype=str, low_memory=False)
-
-                # Remove the first column for subsequent files
-                df = df.iloc[:, 1:]
-
-                # Convert the DataFrame to a list of lists to match the .xls data structure
-                data = df.values.tolist()
-
-            # Append the contents to the sheet for subsequent files (exclude the first column)
-            for index, row in enumerate(data):
-                for col_index, value in enumerate(row):
-                    sheet.cell(row=start_row + index, column=start_column + col_index, value=value)
-
-            # Update the starting column for subsequent files
-            start_column = sheet.max_column + 1
+        # Increment the starting column for the next file
+        start_column += len(data[0]) - 1
 
     # Save the changes to master.xlsx
-    wb.save(excel_file)
+    wb.save('master.xlsx')
 
-# Example usage
-if __name__ == "__main__":
-    excel_file_path = 'master.xlsx'  # Change the extension to .xlsx
-    add_txt_to_excel(excel_file_path)
+if __name__ == '__main__':
+    main()
