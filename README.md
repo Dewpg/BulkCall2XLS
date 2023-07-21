@@ -5,7 +5,7 @@ To use this script, you must have python installed on your system.
 
 Place the python script into an unzipped folder of single period bulk call report data downloaded from https://cdr.ffiec.gov/public/PWS/DownloadBulkData.aspx
 
-Run script (can take as long as a minute to process)
+Run script (can take as long as several minutes to process)
 
 Open master.xls
 
