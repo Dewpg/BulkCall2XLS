@@ -1,118 +1,84 @@
-import csv
-import openpyxl
+import pandas as pd
 import os
-from openpyxl.utils import get_column_letter
+import zipfile
 
-def clean_sheet_name(sheet_name):
-    # Remove characters that cannot be used in a worksheet name
-    return "".join(c for c in sheet_name if c.isalnum() or c in [' ', '_', '-'])
+def handle_irregular_data(filename):
+    data = []
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        headers = [header.replace('"', '') for header in lines[0].strip().split('\t')]
+        for line in lines[1:]:
+            values = [value.replace('"', '') for value in line.strip().split('\t')]
+            row = {headers[i]: values[i] for i in range(len(values))}
+            data.append(row)
+    return data, headers
 
-def delete_empty_and_duplicate_columns(sheet):
-    # Find the columns that have an empty value in the first row or are duplicates
-    first_row_values = set()
-    duplicate_columns = set()
+# Unzip the file
+with zipfile.ZipFile('FFIEC CDR Call Bulk All Schedules 033120232.zip', 'r') as zip_ref:
+    zip_ref.extractall('extracted')
 
-    for col_idx in range(1, sheet.max_column + 1):
-        col_letter = get_column_letter(col_idx)
-        cell_value = sheet[col_letter + '1'].value
+# Get the list of unzipped files
+unzipped_dir = 'extracted'
+unzipped_files = os.listdir(unzipped_dir)
 
-        if not cell_value:
-            # Mark empty columns for deletion
-            duplicate_columns.add(col_idx)
-        elif cell_value in first_row_values:
-            # Mark duplicate columns for deletion
-            duplicate_columns.add(col_idx)
-        else:
-            # Add the value to the set of seen values in the first row
-            first_row_values.add(cell_value)
+# Identify the "Bulk" file and filter out those that have "AL" in their 9th column
+bulk_file_name = [file for file in unzipped_files if "Bulk" in file][0]
+bulk_file_path = os.path.join(unzipped_dir, bulk_file_name)
 
-    # Delete the marked columns in reverse order to avoid index issues
-    for col_idx in sorted(duplicate_columns, reverse=True):
-        sheet.delete_cols(col_idx)
+# Handle the irregular data in the "Bulk" file
+bulk_data, bulk_headers = handle_irregular_data(bulk_file_path)
 
-def find_empty_column(sheet):
-    # Find the first empty column in the sheet
-    for col in range(1, sheet.max_column + 2):
-        col_letter = get_column_letter(col)
-        if not sheet[col_letter + '1'].value:
-            return col
-    return sheet.max_column + 2
+# Store the IDRSSD values from the "Bulk" file in a set for faster lookup
+idrssd_set = set(row['IDRSSD'] for row in bulk_data if row[bulk_headers[8]] == "AL")
 
-def main():
-    # Get all filenames that end with ".txt"
-    filenames = [f for f in os.listdir('.') if f.endswith('.txt')]
+# Dictionary to store the headers and corresponding data from each file
+data_dict = {}
 
-    # Find the filename that contains the word "BULK" and remove it from the list
-    bulk_filename = next((f for f in filenames if 'Bulk' in f), None)
-    if bulk_filename:
-        filenames.remove(bulk_filename)
-    else:
-        print("No file with 'BULK' in its filename found.")
-        return
+# Handle the irregular data in the "Bulk" file and store the headers and corresponding data
+for row in bulk_data:
+    idrssd = row[bulk_headers[0]]
+    if idrssd in idrssd_set:
+        if idrssd not in data_dict:
+            data_dict[idrssd] = {}
+        for i in range(1, len(bulk_headers)):
+            if bulk_headers[i] in row:
+                try:
+                    data_dict[idrssd][bulk_headers[i]] = float(row[bulk_headers[i]])
+                except ValueError:
+                    data_dict[idrssd][bulk_headers[i]] = row[bulk_headers[i]]
 
-    # Create or load the master.xlsx file
-    if os.path.exists('master.xlsx'):
-        wb = openpyxl.load_workbook('master.xlsx')
-    else:
-        wb = openpyxl.Workbook()
+# For each file that isn't the README file, the 'Bulk' file, or the "CI" file, store the headers and corresponding data
+other_files = [file for file in unzipped_files if "README" not in file and "Bulk" not in file and "CI" not in file]
 
-    print("Creating dated sheetname as second sheet in file")
-    # Create a worksheet with the name of the last 8 characters before the .txt for the BULK file
-    sheet_name = bulk_filename[-12:-4]
-    sheet_name = clean_sheet_name(sheet_name)  # Clean the sheet name
-    if sheet_name not in wb.sheetnames:
-        sheet = wb.create_sheet(title=sheet_name)
-    else:
-        sheet = wb[sheet_name]
-    print("Sheet named " + sheet_name)
+for file in other_files:
+    file_path = os.path.join(unzipped_dir, file)
     
-    # Read the data from the BULK file
-    with open(bulk_filename, 'r') as f:
-        reader = csv.reader(f, delimiter='\t')
-        data = list(reader)
+    with open(file_path, 'r') as f:
+        headers = [header.replace('"', '') for header in f.readline().strip().split('\t')]
 
-    # Write the data to the worksheet
-    for row, line in enumerate(data):
-        for col, cell in enumerate(line):
-            col_letter = get_column_letter(col + 1)  # Convert the column index to letter
-            
-            # Check if the cell value is a number and set the data type accordingly
-            if cell.isnumeric():
-                sheet[col_letter + str(row + 1)] = int(cell)
-            else:
-                sheet[col_letter + str(row + 1)] = cell 
-    
-    # Get the starting column based on existing data on the sheet or the first empty column
-    start_column = find_empty_column(sheet)
+    data = handle_irregular_data(file_path)[0]
 
-    # Iterate through the rest of the TXT files and add the data to the right
-    for filename in filenames:
-        with open(filename, 'r') as f:
-            reader = csv.reader(f, delimiter='\t')
-            data = list(reader)
-        print("Adding " + filename)
-        print("Checking to validate value type as number")
-        # Write the data to the existing sheet starting from the first empty column
-        for row, line in enumerate(data):
-            for col, cell in enumerate(line):
-                col_letter = get_column_letter(start_column + col)  # Convert the column index to letter
-                
-                # Check if the cell value is a number and set the data type accordingly
-                if cell.isnumeric():
-                    sheet[col_letter + str(row + 1)].data_type = 'n'
-                    sheet[col_letter + str(row + 1)].value = int(cell)
-                else:
-                    sheet[col_letter + str(row + 1)] = cell
-        print("Finished datatyping a file") 
-        # Increment the starting column for the next file
-        start_column += len(data[0])
+    for row in data:
+        idrssd = row[headers[0]]
+        if idrssd in idrssd_set:
+            if idrssd not in data_dict:
+                data_dict[idrssd] = {}
+            for i in range(1, len(headers)):
+                if headers[i] in row:
+                    try:
+                        data_dict[idrssd][headers[i]] = float(row[headers[i]])
+                    except ValueError:
+                        data_dict[idrssd][headers[i]] = row[headers[i]]
 
-    # Delete empty and duplicate columns from the sheet
-    delete_empty_and_duplicate_columns(sheet)
+# ...
 
-    # Save the workbook again
-    wb.save('master.xlsx')
-    print("Deletions processed")
-    
-if __name__ == '__main__':
-    main()
+# Convert the data dictionary into a pandas DataFrame
+df = pd.DataFrame(data_dict).T
+
+# Create a new Excel writer object
+with pd.ExcelWriter('master.xlsx') as excel_writer:
+    # Write the DataFrame to the Excel file
+    df.to_excel(excel_writer, index_label='IDRSSD')
+
+    # Save and close the Excel file
+    excel_writer.close()
