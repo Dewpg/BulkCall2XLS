@@ -11,7 +11,7 @@ def handle_irregular_data(filename):
         headers = [header.replace('"', '') for header in lines[0].strip().split('\t')]
         for line in lines[1:]:
             values = [value.replace('"', '') for value in line.strip().split('\t')]
-            row = {headers[i]: values[i] for i in range(len(values))}
+            row = {headers[i]: values[i] if i < len(values) else np.nan for i in range(len(headers))}
             data.append(row)
     return data, headers
 
@@ -42,8 +42,8 @@ unzipped_files = os.listdir(unzipped_dir)
 bulk_file_name = [file for file in unzipped_files if "Bulk" in file][0]
 bulk_file_path = os.path.join(unzipped_dir, bulk_file_name)
 
-# Extract the date from the "Bulk" file name for the sheet name
-sheet_name = bulk_file_name.split(' ')[-1].replace('.txt', '')
+# Extract the date from the selected zip file's name for the sheet name
+sheet_name = zip_file.split(' ')[-1].replace('.zip', '')
 
 # Check if the sheet already exists in the Excel file
 try:
@@ -51,10 +51,10 @@ try:
     writer = pd.ExcelWriter('master.xlsx', engine='openpyxl') 
     writer.book = book
     if sheet_name in book.sheetnames:
-        replace = input(f"The sheet '{sheet_name}' already exists. Would you like to replace it? (yes/no): ")
+        replace = input(f"A sheet for the date '{sheet_name}' already exists. Would you like to replace it? (yes/no): ")
         if replace.lower() != 'yes':
             sheet_name += '2'
-except FileNotFoundError:
+except (FileNotFoundError, zipfile.BadZipFile):
     writer = pd.ExcelWriter('master.xlsx', engine='openpyxl')
 
 # Handle the irregular data in the "Bulk" file
