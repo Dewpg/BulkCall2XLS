@@ -3,6 +3,7 @@ import os
 import zipfile
 import numpy as np
 from openpyxl import load_workbook
+import shutil
 
 def handle_irregular_data(filename):
     data = []
@@ -125,3 +126,5 @@ df.to_excel(writer, sheet_name=sheet_name, index_label='IDRSSD')
 
 # Save and close the Excel file
 writer.close()
+
+shutil.rmtree('extracted')
